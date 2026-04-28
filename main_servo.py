@@ -2,26 +2,20 @@ import sys
 import threading
 import time
 from collections import deque
+import os
 
 import cv2
-import select
+if os.name == 'nt':
+    import msvcrt
+else:
+    import select
 
 """ 以下是自建包，存放于include目录下 """
-from include.SerialCtrl import SerialComm
 from include.dect import RectangleDetector
 from include.PWM import ServoController
 from include.camera_reader import CameraReader
 from include.pid import PID, PIDParams,PIDController
 from include.display import DebugDisplay
-
-# 串口配置参数
-SERIAL_PORT = '/dev/ttyUSB0'  # 根据实际设备修改
-BAUD_RATE = 9600
-START1_SIGNAL = b'start1'  # 开始控制信号1
-START2_SIGNAL = b'start2'  # 开始控制信号2 (舵机方向转换)
-START3_SIGNAL = b'start3'  # 开始控制信号3（激光连续模式）
-LASER_ON_SIGNAL = b'1;'    # 激光开启信号
-LASER_OFF_SIGNAL = b'0;'   # 激光关闭信号
 
 tilt_value = 600  # 垂直舵机初始值
 
@@ -47,12 +41,7 @@ stop_sending = False
 prev_center = None
 frame_queue = deque(maxlen=3)
 trail_image = None
-control_enabled = False  # 控制状态标志
-laser_sent = False       # 激光发射标志
-serial_buffer = bytearray()  # 串口接收缓冲区
-laser_timer = 0          # 激光计时器
-laser_active = False     # 激光激活状态
-current_mode = "idle"    # 当前模式: idle/start1/start2
+control_enabled = True  # 控制状态标志
 center_stay_timer = 0    # 中心区域停留计时器
 in_center_zone = False   # 是否在中心区域
 fanzhuan = False  # 是否反转舵机方向
@@ -78,28 +67,25 @@ tilt_pid = PID(
     imax=pid_params.tilt_imax
 )
 
-# 初始化串口
-serial_comm = SerialComm(SERIAL_PORT, BAUD_RATE, timeout=0.1)
-
-def safe_serial_write(cmd):
-    """安全写串口，防止阻塞"""
-    try:
-        if serial_comm.is_open():
-            serial_comm.write(cmd)
-    except Exception as e:
-        print(f"串口写入异常: {e}")
-
 def input_listener():
     """监听键盘输入"""
     global stop_sending
     while not stop_sending:
         try:
-            if sys.stdin in select.select([sys.stdin], [], [], 0)[0]:
-                user_input = sys.stdin.read(1)
-                if user_input.lower() == 'q':
-                    stop_sending = True
-                    print("\n停止程序...")
-        except:
+            if os.name == 'nt':
+                if msvcrt.kbhit():
+                    user_input = msvcrt.getwch()
+                    if user_input.lower() == 'q':
+                        stop_sending = True
+                        print("\n停止程序...")
+                time.sleep(0.05)
+            else:
+                if sys.stdin in select.select([sys.stdin], [], [], 0)[0]:
+                    user_input = sys.stdin.read(1)
+                    if user_input.lower() == 'q':
+                        stop_sending = True
+                        print("\n停止程序...")
+        except Exception:
             break
 
 def control_servos(pan_output, tilt_output, detected):
@@ -128,31 +114,6 @@ def control_servos(pan_output, tilt_output, detected):
         print(f"舵机控制: 水平: {pan_value}, 垂直: {tilt_value}, 检测: {detected}, 反转: {fanzhuan}")
     except Exception as e:
         print(f"舵机控制错误: {e}")
-
-def laser_control_logic():
-    """激光控制逻辑，独立函数"""
-    global laser_sent, laser_active, current_mode, laser_timer, center_stay_timer, in_center_zone
-    if control_enabled:
-        if current_mode == "start3":
-            # 连续模式：确保激光保持开启
-            if not laser_sent:
-                if serial_comm.is_open():
-                    serial_comm.write(LASER_ON_SIGNAL)
-                    print("发送激光开启指令 (连续模式)")
-                laser_sent = True
-                laser_active = True
-        elif current_mode in ("start1", "start2"):
-            # 点射模式：严格依赖检测和中心区域
-            current_time = time.time()
-            # 只有激光已激活时才计时关闭
-            if laser_active and (current_time - laser_timer >= 2.0):
-                if serial_comm.is_open():
-                    serial_comm.write(LASER_OFF_SIGNAL)
-                    print("发送激光关闭指令")
-                laser_active = False
-                current_mode = "idle"  # 关闭激光后状态切换为idle
-                laser_sent = False
-                serial_comm.clear_buffer()
 
 # 启动键盘监听线程
 try:
@@ -203,10 +164,6 @@ PARAM_STEP = {
     'output_scaler': 0.1
 }
 
-# 指示预备
-if serial_comm.is_open():
-    serial_comm.write(b'2;')  # 指示预备
-
 # 初始化多线程检测与PID控制类
 rect_detector = RectangleDetector(detection_params)
 rect_detector.start()
@@ -217,40 +174,6 @@ debug_display = DebugDisplay(detection_params, pid_params)
 # 主循环
 try:
     while not stop_sending:  # 循环直到收到停止信号
-        # 检查串口信号（非阻塞方式）
-        serial_comm.read_all()
-        # 检查start1信号
-        if serial_comm.check_signal(START1_SIGNAL):
-            control_enabled = True
-            laser_sent = False
-            laser_active = False
-            current_mode = "start1"
-            in_center_zone = False
-            center_stay_timer = 0
-            print("接收到开始控制信号 (模式1)")
-        # 检查start2信号
-        elif serial_comm.check_signal(START2_SIGNAL):
-            control_enabled = True
-            current_mode = "start2"
-            in_center_zone = False
-            center_stay_timer = 0
-            fanzhuan = not fanzhuan
-        # 检查start3信号
-        if serial_comm.check_signal(START3_SIGNAL):
-            control_enabled = True
-            current_mode = "start3"
-            if serial_comm.is_open():
-                serial_comm.write(LASER_ON_SIGNAL)
-                print("发送激光开启指令 (连续模式)")
-            laser_active = True
-            laser_sent = True
-            print("接收到开始控制信号 (模式3)")
-        # 清空串口缓冲区，防止信号残留
-        serial_comm.clear_buffer()
-
-        # 处理激光控制
-        laser_control_logic()
-
         # 从CameraReader获取帧
         retval, frame = camera_reader.read()
         if not retval:
@@ -296,20 +219,11 @@ try:
         else:
             in_center_zone = False
         debug_display.update(fps, avg_process_time, in_center_zone, center_stay_timer)
-        display_img = debug_display.draw(display_img, img_center, filtered_point, contour, control_enabled, laser_active, current_mode)
+        display_img = debug_display.draw(display_img, img_center, filtered_point, contour, control_enabled)
 
         # 控制舵机运动
         if control_enabled:
             control_servos(pan_output, tilt_output, filtered_point is not None)
-            # 激光发射条件：start1/start2模式+中心区域+未激活+停留时间满足
-            if current_mode in ("start1", "start2") and in_center_zone and not laser_active:
-                if time.time() - center_stay_timer >= 0.6:
-                    if serial_comm.is_open():
-                        serial_comm.write(LASER_ON_SIGNAL)
-                        print("发送激光开启指令")
-                    laser_active = True
-                    laser_sent = True
-                    laser_timer = time.time()
         else:
             control_servos(0, 0, False)
 
@@ -323,8 +237,6 @@ try:
                 stay_time = time.time() - center_stay_timer
                 print(f"中心区域停留: {stay_time:.2f}s")
         print(f"控制状态: {'已启用' if control_enabled else '已禁用'}")
-        print(f"激光状态: {'开启' if laser_active else '关闭'}")
-        print(f"当前模式: {current_mode}")
         print(f"处理延迟: {avg_process_time:.1f}ms")
         print("=" * 40)
 
@@ -346,12 +258,5 @@ finally:  # 收尾，确保资源释放
     controller.servo_release(servonum=3)
     controller.servo_release(servonum=4)
     print("舵机已释放")
-    
-    # 确保激光关闭
-    if laser_active and serial_comm.is_open():
-        serial_comm.write(LASER_OFF_SIGNAL)
-        print("发送激光关闭指令")
-    
-    # 关闭串口
-    serial_comm.close()
+
     print("程序已退出")

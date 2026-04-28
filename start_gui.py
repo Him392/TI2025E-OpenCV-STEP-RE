@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-GUI启动脚本 - TI2025E-OpenCV 舵机激光控制系统
-GUI Launcher Script for TI2025E-OpenCV Servo/Laser Control System
+GUI启动脚本 - TI2025E-OpenCV 目标跟踪控制系统
+GUI Launcher Script for TI2025E-OpenCV Tracking Control System
 """
 
 import sys
@@ -34,7 +34,7 @@ def check_environment():
     
     if missing_modules:
         print(f"\n缺少依赖模块: {', '.join(missing_modules)}")
-        print("请运行: pip install opencv-python PyQt5 pyserial numpy python-periphery")
+        print("请运行: pip install opencv-python PyQt5 pyserial numpy")
         return False
     
     # 检查项目文件
@@ -86,26 +86,7 @@ def check_hardware():
     if not camera_available:
         print("⚠️  未检测到摄像头，将使用演示模式")
     
-    # 检查串口设备
-    serial_ports = ['/dev/ttyUSB0', '/dev/ttyUSB1', '/dev/ttyACM0']
-    serial_available = False
-    
-    for port in serial_ports:
-        if os.path.exists(port):
-            try:
-                import serial
-                ser = serial.Serial(port, 9600, timeout=1)
-                ser.close()
-                print(f"✓ 串口 {port} 可用")
-                serial_available = True
-                break
-            except:
-                pass
-    
-    if not serial_available:
-        print("⚠️  未检测到串口设备，激光控制将不可用")
-    
-    return camera_available, serial_available
+    return camera_available
 
 def main():
     """主函数"""
@@ -118,16 +99,13 @@ def main():
         return 1
     
     # 硬件检查
-    camera_ok, serial_ok = check_hardware()
+    camera_ok = check_hardware()
     
     print("\n" + "=" * 50)
     print("检查完成，准备启动GUI...")
     
     if not camera_ok:
         print("⚠️  注意：摄像头不可用，某些功能可能无法正常工作")
-    
-    if not serial_ok:
-        print("⚠️  注意：串口不可用，激光控制功能将不可用")
     
     print("\n正在启动GUI界面...")
     

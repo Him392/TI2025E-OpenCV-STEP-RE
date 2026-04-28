@@ -1,7 +1,7 @@
-#!/usr/bin/env python3
+
 """
 PyQt5 GUI for TI2025E-OpenCV Servo/Laser Control System
-基于PyQt5的OpenCV舵机激光控制系统图形界面
+基于PyQt5的OpenCV目标跟踪控制系统图形界面
 """
 
 import base64
@@ -18,7 +18,6 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QComboBox, QTextEdit, QSplitter)
 
 # 导入项目模块
-from include.SerialCtrl import SerialComm
 from include.camera_reader import CameraReader
 from include.dect import find_black_rectangle_center
 from include.pid import PIDParams, PIDController
@@ -232,26 +231,11 @@ class ControlWidget(QGroupBox):
         layout.addWidget(self.start_button)
         layout.addWidget(self.stop_button)
         
-        # 激光控制
-        laser_layout = QHBoxLayout()
-        self.laser_on_button = QPushButton("激光开 Laser ON")
-        self.laser_off_button = QPushButton("激光关 Laser OFF")
-        laser_layout.addWidget(self.laser_on_button)
-        laser_layout.addWidget(self.laser_off_button)
-        layout.addLayout(laser_layout)
-        
         # 模式选择
         layout.addWidget(QLabel("控制模式:"))
         self.mode_combo = QComboBox()
-        self.mode_combo.addItems(["自动跟踪", "手动控制", "激光连续"])
+        self.mode_combo.addItems(["自动跟踪", "手动控制"])
         layout.addWidget(self.mode_combo)
-        
-        # 串口设置
-        layout.addWidget(QLabel("串口端口:"))
-        self.serial_combo = QComboBox()
-        self.serial_combo.addItems(["/dev/ttyUSB0", "/dev/ttyUSB1", "/dev/ttyACM0"])
-        self.serial_combo.setEditable(True)
-        layout.addWidget(self.serial_combo)
         
         self.setLayout(layout)
 
@@ -281,25 +265,14 @@ class StatusWidget(QGroupBox):
         self.control_status_label = QLabel("停止")
         layout.addWidget(self.control_status_label, 2, 1)
         
-        # 激光状态
-        layout.addWidget(QLabel("激光状态:"), 3, 0)
-        self.laser_status_label = QLabel("关闭")
-        layout.addWidget(self.laser_status_label, 3, 1)
-        
-        # 串口状态
-        layout.addWidget(QLabel("串口状态:"), 4, 0)
-        self.serial_status_label = QLabel("未连接")
-        layout.addWidget(self.serial_status_label, 4, 1)
-        
         # 目标状态
-        layout.addWidget(QLabel("目标检测:"), 5, 0)
+        layout.addWidget(QLabel("目标检测:"), 3, 0)
         self.target_status_label = QLabel("无目标")
-        layout.addWidget(self.target_status_label, 5, 1)
+        layout.addWidget(self.target_status_label, 3, 1)
         
         self.setLayout(layout)
     
-    def update_status(self, fps=None, process_time=None, control_active=None, 
-                     laser_active=None, serial_connected=None, target_detected=None):
+    def update_status(self, fps=None, process_time=None, control_active=None, target_detected=None):
         """更新状态显示"""
         if fps is not None:
             self.fps_label.setText(f"{fps:.1f}")
@@ -307,10 +280,6 @@ class StatusWidget(QGroupBox):
             self.process_time_label.setText(f"{process_time:.1f} ms")
         if control_active is not None:
             self.control_status_label.setText("运行" if control_active else "停止")
-        if laser_active is not None:
-            self.laser_status_label.setText("开启" if laser_active else "关闭")
-        if serial_connected is not None:
-            self.serial_status_label.setText("已连接" if serial_connected else "未连接")
         if target_detected is not None:
             self.target_status_label.setText("检测到目标" if target_detected else "无目标")
 
@@ -332,7 +301,7 @@ class MainWindow(QMainWindow):
         except Exception as e:
             print(f"无法设置窗口图标: {e}")
 
-        self.setWindowTitle("TI2025E-OpenCV 舵机激光控制系统")
+        self.setWindowTitle("TI2025E-OpenCV 目标跟踪控制系统")
         self.setGeometry(100, 100, 950, 780)
         
         # 系统组件
@@ -340,13 +309,10 @@ class MainWindow(QMainWindow):
         self.detector_params = DetectionParams()
         self.pid_params = PIDParams()
         self.pid_controller = None
-        self.serial_comm = None
         self.servo_controller = None
         
         # 状态变量
         self.control_active = False
-        self.laser_active = False
-        self.serial_connected = False
         self.prev_center = None
         
         # 初始化UI
@@ -445,9 +411,6 @@ class MainWindow(QMainWindow):
         """连接信号和槽"""
         self.control_panel.start_button.clicked.connect(self.start_control)
         self.control_panel.stop_button.clicked.connect(self.stop_control)
-        self.control_panel.laser_on_button.clicked.connect(self.laser_on)
-        self.control_panel.laser_off_button.clicked.connect(self.laser_off)
-        
     def start_control(self):
         """开始控制"""
         self.log_message("正在启动控制系统...")
@@ -459,16 +422,6 @@ class MainWindow(QMainWindow):
                 self.camera_thread.frameReady.connect(self.update_video_frame)
                 self.camera_thread.start()
                 
-            # 初始化串口通信
-            serial_port = self.control_panel.serial_combo.currentText()
-            if not self.serial_connected:
-                try:
-                    self.serial_comm = SerialComm(serial_port, 9600)
-                    self.serial_connected = True
-                    self.log_message(f"串口 {serial_port} 连接成功")
-                except Exception as e:
-                    self.log_message(f"串口连接失败: {e}")
-                    
             # 初始化PID控制器
             pid_params = self.pid_params.get_params()
             self.pid_controller = PIDController(pid_params)
@@ -493,40 +446,10 @@ class MainWindow(QMainWindow):
             self.camera_thread.stop()
             self.camera_thread = None
             
-        # 断开串口
-        if self.serial_comm:
-            self.serial_comm.close()
-            self.serial_comm = None
-            self.serial_connected = False
-            
         self.control_panel.start_button.setEnabled(True)
         self.control_panel.stop_button.setEnabled(False)
         
         self.log_message("控制系统已停止")
-        
-    def laser_on(self):
-        """开启激光"""
-        if self.serial_comm and self.serial_connected:
-            try:
-                self.serial_comm.send_data(b'1;')
-                self.laser_active = True
-                self.log_message("激光已开启")
-            except Exception as e:
-                self.log_message(f"激光控制失败: {e}")
-        else:
-            self.log_message("串口未连接，无法控制激光")
-            
-    def laser_off(self):
-        """关闭激光"""
-        if self.serial_comm and self.serial_connected:
-            try:
-                self.serial_comm.send_data(b'0;')
-                self.laser_active = False
-                self.log_message("激光已关闭")
-            except Exception as e:
-                self.log_message(f"激光控制失败: {e}")
-        else:
-            self.log_message("串口未连接，无法控制激光")
             
     @pyqtSlot(np.ndarray)
     def update_video_frame(self, frame):
@@ -600,9 +523,7 @@ class MainWindow(QMainWindow):
         """更新状态显示"""
         self.status_panel.update_status(
             fps=self.current_fps,
-            control_active=self.control_active,
-            laser_active=self.laser_active,
-            serial_connected=self.serial_connected
+            control_active=self.control_active
         )
         
     def log_message(self, message):
