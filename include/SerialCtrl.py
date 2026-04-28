@@ -1,4 +1,10 @@
 import serial
+from serial.tools import list_ports
+
+
+def list_available_ports():
+    return [port.device for port in list_ports.comports()]
+
 
 class SerialComm:
     def __init__(self, port, baudrate, timeout=0.1):
@@ -12,9 +18,9 @@ class SerialComm:
     def _init_serial(self):
         try:
             self.ser = serial.Serial(self.port, self.baudrate, timeout=self.timeout)
-            print(f"串口初��化成功: {self.port}")
+            print(f"Serial initialized: {self.port}")
         except Exception as e:
-            print(f"串口初始化失败: {e}")
+            print(f"Serial initialization failed: {e}")
             self.ser = None
 
     def is_open(self):
@@ -25,14 +31,17 @@ class SerialComm:
             if self.is_open():
                 self.ser.write(cmd)
         except Exception as e:
-            print(f"串口写入异常: {e}")
+            print(f"Serial write error: {e}")
+
+    def send_data(self, data):
+        self.write(data)
 
     def read_all(self):
         if self.is_open() and self.ser.in_waiting > 0:
             data = self.ser.read(self.ser.in_waiting)
             self.buffer.extend(data)
             return data
-        return b''
+        return b""
 
     def check_signal(self, signal):
         if signal in self.buffer:
@@ -47,4 +56,4 @@ class SerialComm:
     def close(self):
         if self.is_open():
             self.ser.close()
-            print("串口已关闭")
+            print("Serial closed")

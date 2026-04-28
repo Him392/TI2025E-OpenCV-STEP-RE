@@ -20,21 +20,17 @@ class DebugDisplay:
         self.in_center_zone = in_center_zone
         self.center_stay_timer = center_stay_timer
 
-    def draw(self, display_img, img_center, filtered_point, contour, control_enabled, laser_active, current_mode):
+    def draw(self, display_img, img_center, filtered_point, contour, control_enabled):
         # 性能信息
         cv2.putText(display_img, f"FPS: {self.fps:.1f}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
         cv2.putText(display_img, f"Proc: {self.avg_process_time:.1f}ms", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
         control_status = "CTRL: " + ("ON" if control_enabled else "OFF")
         cv2.putText(display_img, control_status, (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0) if control_enabled else (0, 0, 255), 2)
-        laser_status = "LASER: " + ("ON" if laser_active else "OFF")
-        cv2.putText(display_img, laser_status, (10, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0) if laser_active else (0, 0, 255), 2)
-        mode_status = f"MODE: {current_mode}"
-        cv2.putText(display_img, mode_status, (10, 150), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 200, 255), 2)
         if self.in_center_zone:
             stay_time = time.time() - self.center_stay_timer
-            cv2.putText(display_img, f"Stay: {stay_time:.1f}s", (10, 180), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
+            cv2.putText(display_img, f"Stay: {stay_time:.1f}s", (10, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
         if self.show_params:
-            y_offset = 210
+            y_offset = 150
             cv2.putText(display_img, f"Min Area: {self.detection_params.min_area}", (10, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 200, 255), 1)
             cv2.putText(display_img, f"Min Rect: {self.detection_params.min_rectangularity:.2f}", (10, y_offset+25), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 200, 255), 1)
             cv2.putText(display_img, f"Max Aspect: {self.detection_params.max_aspect_ratio:.1f}", (10, y_offset+50), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 200, 255), 1)
