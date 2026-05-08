@@ -42,3 +42,33 @@ def send_step_pan(ser_pan, direction, speed, accel, pulses):
         print(f"OK-speed: {speed}rpm, accel: {accel}, pulses: {pulses} ,{packet.hex(' ').upper()}")
     except Exception as e:
         print(f"ERR!!! {e}")
+import struct
+
+def send_step(ser, direction, speed, accel, pulses, mode=0x01):
+    addr = 0x01
+    func_code = 0xFD
+    sync_flag = 0x00
+    checksum = 0x6B
+    
+    packet = struct.pack('>BB B H B I B B B', 
+                         addr,
+                         func_code,
+                         direction,
+                         int(speed),
+                         int(accel),
+                         int(pulses),
+                         mode,
+                         sync_flag,
+                         checksum)
+
+    try:
+        ser.write(packet)
+    except Exception as e:
+        pass
+
+def send_speed(ser, direction, speed, accel):
+    packet = struct.pack('>BB B H B B B', 0x01, 0xF6, direction, int(speed), int(accel), 0x00, 0x6B)
+    try:
+        ser.write(packet)
+    except:
+        pass

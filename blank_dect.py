@@ -78,12 +78,14 @@ def open_configured_camera(camera_index=0, width=640, height=480, fps=30, print_
 class DetectorControlPanel:
     """OpenCV 可视化参数调节面板。"""
 
-    def __init__(self, blur_ksize=5, canny_thresh_lower=50, approx_ratio_x100=9, use_roi=1, window_name="Controls"):
+    def __init__(self, blur_ksize=5, canny_thresh_lower=50, approx_ratio_x100=9, use_roi=1, laser_x=0, laser_y=0, window_name="Controls"):
         self.window_name = window_name
         self.blur_ksize = blur_ksize
         self.canny_thresh_lower = canny_thresh_lower
         self.approx_ratio_x100 = approx_ratio_x100
         self.use_roi = use_roi
+        self.laser_x_offset = laser_x
+        self.laser_y_offset = laser_y
 
     @staticmethod
     def _noop(_value):
@@ -91,17 +93,21 @@ class DetectorControlPanel:
 
     def create(self):
         cv2.namedWindow(self.window_name, cv2.WINDOW_NORMAL)
-        cv2.resizeWindow(self.window_name, 420, 260)
+        cv2.resizeWindow(self.window_name, 420, 320)
         cv2.createTrackbar("Blur Ksize", self.window_name, self.blur_ksize, 21, self._noop)
         cv2.createTrackbar("Canny Low", self.window_name, self.canny_thresh_lower, 255, self._noop)
         cv2.createTrackbar("Approx x100", self.window_name, self.approx_ratio_x100, 50, self._noop)
         cv2.createTrackbar("Use ROI", self.window_name, self.use_roi, 1, self._noop)
+        cv2.createTrackbar("Laser X", self.window_name, self.laser_x_offset + 100, 200, self._noop)  # 100 is center (+/- 100)
+        cv2.createTrackbar("Laser Y", self.window_name, self.laser_y_offset + 100, 200, self._noop)  # 100 is center (+/- 100)
 
     def sync_to(self, detector):
         current_blur = cv2.getTrackbarPos("Blur Ksize", self.window_name)
         current_canny = cv2.getTrackbarPos("Canny Low", self.window_name)
         current_approx = cv2.getTrackbarPos("Approx x100", self.window_name)
         current_roi = cv2.getTrackbarPos("Use ROI", self.window_name)
+        laser_x = cv2.getTrackbarPos("Laser X", self.window_name) - 100
+        laser_y = cv2.getTrackbarPos("Laser Y", self.window_name) - 100
 
         if current_blur < 1:
             current_blur = 1
@@ -112,6 +118,8 @@ class DetectorControlPanel:
         detector.canny_thresh_lower = current_canny
         detector.approx_ratio = max(0.01, current_approx / 100.0)
         detector.use_roi = bool(current_roi)
+        detector.laser_offset_x = laser_x
+        detector.laser_offset_y = laser_y
 
 class BlankDetector:
     def __init__(self, use_roi=True, blur_ksize=5, canny_thresh_lower=50, approx_ratio=0.09):
@@ -119,6 +127,8 @@ class BlankDetector:
         self.blur_ksize = blur_ksize
         self.canny_thresh_lower = canny_thresh_lower
         self.approx_ratio = approx_ratio
+        self.laser_offset_x = 0
+        self.laser_offset_y = 0
         
         # Tracking history states
         self.last_bounding_rect = None
@@ -235,7 +245,7 @@ class BlankDetector:
         
         if best_vertices is None and used_roi:
             self.roi_lost_frames += 1
-            if self.roi_lost_frames >= 15:
+            if self.roi_lost_frames >= 10:
                 self.last_bounding_rect = None
                 roi_box_used = None
                 self.area_history = []
@@ -293,11 +303,16 @@ class BlankDetector:
             self.target_tracked_frames = 0
 
         img_h, img_w = display_img.shape[:2]
-        img_center_x, img_center_y = img_w // 2, img_h // 2
+        # 加入人工激光偏移量后的新目标中心点
+        img_center_x = (img_w // 2) + self.laser_offset_x
+        img_center_y = (img_h // 2) + self.laser_offset_y
         
         delta_vector = None
 
         if debug:
+            # 绘制带有偏移的虚拟中心准星（代表激光落点）
+            cv2.line(display_img, (img_center_x - 10, img_center_y), (img_center_x + 10, img_center_y), (255, 0, 0), 1)
+            cv2.line(display_img, (img_center_x, img_center_y - 10), (img_center_x, img_center_y + 10), (255, 0, 0), 1)
             cv2.circle(display_img, (img_center_x, img_center_y), 4, (255, 0, 0), -1)
 
             if best_vertices is not None:
@@ -310,6 +325,7 @@ class BlankDetector:
             dx = rect_cx - img_center_x
             dy = rect_cy - img_center_y
             
+            # 持续输出预测向量（最多10帧），与 ROI 的维持时间一致，超过10帧后将返回 None 令电机停止
             if self.target_tracked_frames >= self.TRUST_FRAMES:
                 delta_vector = (dx, dy)
             else:
