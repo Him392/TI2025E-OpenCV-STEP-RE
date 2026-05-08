@@ -14,7 +14,8 @@ def send_step_pan(ser_pan, direction, speed, accel, pulses):
     :param direction: 方向 (0x00/0x01)
     :param speed: 速度 (最大 0x0BB8),定义的是最大速度，若距离短则受加速度限制，实际速度可能达不到设定值
     :param accel: 加速度 (0x00-0xFF)，目前推荐252
-    :param pulses: 脉冲数 (4字节)，最大4294967295 ，一圈64000脉冲，每个脉冲对应0.005625度
+    :param pulses: 脉冲数 (4字节)，最大4294967295 ，大盘一圈64000脉冲，每个脉冲对应0.005625度
+                                                            ↑有个10:1减速比，电机实际6400脉冲一圈
     """
     addr = 0x01
     func_code = 0xFD
@@ -41,7 +42,3 @@ def send_step_pan(ser_pan, direction, speed, accel, pulses):
         print(f"OK-speed: {speed}rpm, accel: {accel}, pulses: {pulses} ,{packet.hex(' ').upper()}")
     except Exception as e:
         print(f"ERR!!! {e}")
-
-while True:
-    send_step_pan(ser_pan, 0x01, 600, 252, 64000)# 
-    time.sleep(10)  # 等待1秒

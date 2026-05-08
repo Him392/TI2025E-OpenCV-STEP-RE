@@ -7,6 +7,11 @@ GUI Launcher Script for TI2025E-OpenCV Tracking Control System
 import sys
 import os
 
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8")
+
 def check_environment():
     """检查运行环境"""
     print("正在检查运行环境...")
