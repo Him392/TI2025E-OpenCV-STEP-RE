@@ -5,7 +5,7 @@ import os
 
 def main():
     # 1. 设置权重路径和视频路径
-    weights_path = "best.pt"
+    weights_path = "best-bad.pt"
     video_path = r"test_video.mp4"  # 替换成您实际要测试的视频路径
     
     if not os.path.exists(weights_path):
@@ -17,7 +17,10 @@ def main():
     model = YOLO(weights_path)
 
     # 3. 打开视频 (如果是外接 USB 摄像头，填 0 或 1)
-    cap = cv2.VideoCapture(video_path)
+    cap = cv2.VideoCapture(1)
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 252)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 288)
+    cap.set(cv2.CAP_PROP_FPS, 60)
 
     if not cap.isOpened():
         print(f"无法打开视频：{video_path}！请检查视频所在路径。")
@@ -70,7 +73,7 @@ def main():
             # 4. 对当前帧进行检测和追踪，设置 置信度阈值为 0.75
             # 使用 track 并设置 persist=True，YOLO会自动给画面里的物体加上稳定的追踪编号(ID)
             # 添加 imgsz=320 降低分析分辨率，改用 tracker="bytetrack.yaml" 换用更轻量的追踪算法
-            results = model.track(source=frame, conf=0.75, persist=True, verbose=False, imgsz=320, tracker="bytetrack.yaml")
+            results = model.track(source=frame, conf=0.60, persist=True, verbose=False, imgsz=320, tracker="bytetrack.yaml")
 
             # 5. 获取带有检测框和标签的渲染画面
             annotated_frame = results[0].plot()
